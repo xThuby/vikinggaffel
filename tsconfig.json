@@ -6,7 +6,8 @@
         "rootDir": ".",
         "ignoreDeprecations": "6.0",
         "strictPropertyInitialization": false,
-        "strictNullChecks": false
+        "strictNullChecks": false,
+        "noLib": true
     },
     "exclude": ["pxt_modules/**/*test.ts"]
 }
