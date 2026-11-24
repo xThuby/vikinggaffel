@@ -1,521 +1,544 @@
-// VIKINGGAFFEL – første prototype for MakeCode Arcade.
-// Lim hele filen inn i JavaScript-editoren. Ingen utvidelser trengs.
-// Venstre/høyre: båten. Opp/ned: vikinggaffelen. A: start / spill igjen.
+// VIKINGGAFFEL for MakeCode Arcade.
+// Left/right: the boat. Up/down: the viking fork. A: start / play again.
+
+// ---- Sprite kinds ----
 
 namespace SpriteKind {
-    export const Pynt = SpriteKind.create()
-    export const Gaffel = SpriteKind.create()
-    export const Horn = SpriteKind.create()
-    export const Overflateplast = SpriteKind.create()
-    export const Mellomplast = SpriteKind.create()
-    export const Bunnplast = SpriteKind.create()
-    export const Manet = SpriteKind.create()
-    export const Synkende = SpriteKind.create()
+    export const Decoration = SpriteKind.create()
+    export const Fork = SpriteKind.create()
+    export const Horns = SpriteKind.create()
+    export const SurfacePlastic = SpriteKind.create()
+    export const MidwaterPlastic = SpriteKind.create()
+    export const SeabedPlastic = SpriteKind.create()
+    export const Jellyfish = SpriteKind.create()
+    export const Sinking = SpriteKind.create()
 }
 
-// Disse tallene kan vi justere etter første prøvetur.
-const ANTALL_VIKINGER = 5
-const POENG_TOPP = 10
-const POENG_MIDT = 25
-const POENG_BUNN = 50
-const MIN_DYBDE = 49
-const MAKS_DYBDE = 94
-const BAATFART = 52
-const GAFFELFART = 43
-const PAUSE_ETTER_TREFF = 1500
+// ---- Constants ----
 
-let startet = false
-let ferdig = false
-let poeng = 0
-let samlet = 0
-let vikinger = ANTALL_VIKINGER
-let sprukket = false
-let baatX = 57
-// Gaffelvikingen har egen sideposisjon, også når båten når kanten.
-let fiskerX = 87
-let dybde = MIN_DYBDE
-let forrigeTid = 0
-let startTid = 0
-let nestePlast = 0
-let nesteManet = 0
-let tryggTil = 0
-let bytterTil = 0
-let sluttTid = 0
-let melding = ""
-let meldingTil = 0
-let fisker: Sprite = null
-let horn: Sprite = null
-let baat: Sprite = null
-let storviking: Sprite = null
-let armer: Sprite = null
+// Tuning values.
+const VIKING_COUNT = 5
+const POINTS_SURFACE = 10
+const POINTS_MIDWATER = 25
+const POINTS_SEABED = 50
+const MIN_DEPTH = 49
+const MAX_DEPTH = 94
+const BOAT_SPEED = 52
+const FORK_SPEED = 43
+const SAFE_TIME_AFTER_HIT = 1500
+
+// ---- State ----
+
+let started = false
+let finished = false
+let score = 0
+let collected = 0
+let vikingsLeft = VIKING_COUNT
+let cracked = false
+let boatX = 57
+// The fork viking has its own horizontal position, also when the boat reaches the edge.
+let fisherX = 87
+let depth = MIN_DEPTH
+let previousTime = 0
+let startTime = 0
+let nextPlasticTime = 0
+let nextJellyfishTime = 0
+let safeUntil = 0
+let swappingUntil = 0
+let endTime = 0
+let message = ""
+let messageUntil = 0
+let fisher: Sprite = null
+let horns: Sprite = null
+let boat: Sprite = null
+let bigViking: Sprite = null
+let arms: Sprite = null
 let hud: Sprite = null
-let tittel: Sprite = null
-let ventende: Sprite[] = []
-let hjelmHel: Image = null
-let hjelmSprukket: Image = null
-let fiskerHel: Image = null
-let fiskerSkadet: Image = null
-let manetBilder: Image[] = []
+let titlePanel: Sprite = null
+let waitingVikings: Sprite[] = []
+let intactHelmet: Image = null
+let crackedHelmet: Image = null
+let intactFisher: Image = null
+let damagedFisher: Image = null
+let jellyfishImages: Image[] = []
 
-function lagHjelm(delt: boolean): Image {
-    let bilde = image.create(15, 11)
-    bilde.fillRect(4, 3, 7, 6, 13)
-    bilde.fillRect(5, 2, 5, 2, 13)
-    bilde.fillRect(4, 7, 7, 2, 4)
-    bilde.drawLine(7, 3, 7, 6, 1)
-    bilde.drawLine(4, 4, 1, 2, 1)
-    bilde.drawLine(1, 2, 1, 0, 1)
-    bilde.drawLine(10, 4, 13, 2, 1)
-    bilde.drawLine(13, 2, 13, 0, 1)
-    if (delt) {
-        // To synlige halvdeler med en sprekk midt gjennom hjelmen.
-        bilde.drawLine(7, 2, 6, 4, 0)
-        bilde.drawLine(6, 4, 8, 5, 0)
-        bilde.drawLine(8, 5, 7, 8, 0)
-        bilde.setPixel(7, 5, 0)
+// ---- Art ----
+
+function makeHelmet(split: boolean): Image {
+    let picture = image.create(15, 11)
+    picture.fillRect(4, 3, 7, 6, 13)
+    picture.fillRect(5, 2, 5, 2, 13)
+    picture.fillRect(4, 7, 7, 2, 4)
+    picture.drawLine(7, 3, 7, 6, 1)
+    picture.drawLine(4, 4, 1, 2, 1)
+    picture.drawLine(1, 2, 1, 0, 1)
+    picture.drawLine(10, 4, 13, 2, 1)
+    picture.drawLine(13, 2, 13, 0, 1)
+    if (split) {
+        // Two visible halves with a crack through the middle of the helmet.
+        picture.drawLine(7, 2, 6, 4, 0)
+        picture.drawLine(6, 4, 8, 5, 0)
+        picture.drawLine(8, 5, 7, 8, 0)
+        picture.setPixel(7, 5, 0)
     }
-    return bilde
+    return picture
 }
 
-function lagLitenViking(farge: number): Image {
-    let bilde = image.create(15, 21)
-    bilde.fillRect(4, 17, 3, 4, 15)
-    bilde.fillRect(8, 17, 3, 4, 15)
-    bilde.fillRect(3, 11, 9, 7, farge)
-    bilde.fillRect(1, 12, 3, 4, 4)
-    bilde.fillRect(11, 12, 3, 4, 4)
-    bilde.fillRect(4, 7, 7, 6, 4)
-    bilde.fillRect(4, 11, 7, 3, 14)
-    bilde.setPixel(5, 9, 15)
-    bilde.setPixel(9, 9, 15)
-    bilde.drawTransparentImage(hjelmHel, 0, 0)
-    return bilde
+function makeSmallViking(color: number): Image {
+    let picture = image.create(15, 21)
+    picture.fillRect(4, 17, 3, 4, 15)
+    picture.fillRect(8, 17, 3, 4, 15)
+    picture.fillRect(3, 11, 9, 7, color)
+    picture.fillRect(1, 12, 3, 4, 4)
+    picture.fillRect(11, 12, 3, 4, 4)
+    picture.fillRect(4, 7, 7, 6, 4)
+    picture.fillRect(4, 11, 7, 3, 14)
+    picture.setPixel(5, 9, 15)
+    picture.setPixel(9, 9, 15)
+    picture.drawTransparentImage(intactHelmet, 0, 0)
+    return picture
 }
 
-function lagFisker(skade: boolean): Image {
-    let bilde = lagLitenViking(7)
-    if (skade) {
-        bilde.fillRect(0, 0, 15, 9, 0)
-        bilde.drawTransparentImage(hjelmSprukket, 0, 0)
+function makeFisher(damaged: boolean): Image {
+    let picture = makeSmallViking(7)
+    if (damaged) {
+        picture.fillRect(0, 0, 15, 9, 0)
+        picture.drawTransparentImage(crackedHelmet, 0, 0)
     }
-    bilde.flipY()
-    return bilde
+    picture.flipY()
+    return picture
 }
 
-function lagStorviking(): Image {
-    let bilde = image.create(27, 30)
-    // Egen bred, firkantet figur med digre never og rødt skjegg.
-    bilde.fillRect(5, 25, 7, 5, 15)
-    bilde.fillRect(16, 25, 7, 5, 15)
-    bilde.fillRect(3, 14, 21, 12, 2)
-    bilde.fillRect(3, 23, 21, 3, 14)
-    bilde.fillRect(12, 23, 4, 3, 5)
-    bilde.fillRect(1, 14, 5, 9, 4)
-    bilde.fillRect(22, 14, 5, 9, 4)
-    bilde.fillRect(7, 3, 15, 14, 4)
-    bilde.fillRect(6, 1, 16, 5, 14)
-    bilde.fillRect(6, 6, 3, 8, 14)
-    bilde.fillRect(8, 13, 14, 7, 14)
-    bilde.fillRect(10, 18, 10, 3, 14)
-    bilde.fillRect(11, 7, 3, 2, 15)
-    bilde.fillRect(18, 7, 3, 2, 15)
-    bilde.setPixel(12, 9, 15)
-    bilde.setPixel(19, 9, 15)
-    bilde.fillRect(15, 10, 5, 3, 4)
-    bilde.fillRect(14, 14, 6, 2, 1)
-    return bilde
+function makeBigViking(): Image {
+    let picture = image.create(27, 30)
+    // A wide, square figure with huge fists and a red beard.
+    picture.fillRect(5, 25, 7, 5, 15)
+    picture.fillRect(16, 25, 7, 5, 15)
+    picture.fillRect(3, 14, 21, 12, 2)
+    picture.fillRect(3, 23, 21, 3, 14)
+    picture.fillRect(12, 23, 4, 3, 5)
+    picture.fillRect(1, 14, 5, 9, 4)
+    picture.fillRect(22, 14, 5, 9, 4)
+    picture.fillRect(7, 3, 15, 14, 4)
+    picture.fillRect(6, 1, 16, 5, 14)
+    picture.fillRect(6, 6, 3, 8, 14)
+    picture.fillRect(8, 13, 14, 7, 14)
+    picture.fillRect(10, 18, 10, 3, 14)
+    picture.fillRect(11, 7, 3, 2, 15)
+    picture.fillRect(18, 7, 3, 2, 15)
+    picture.setPixel(12, 9, 15)
+    picture.setPixel(19, 9, 15)
+    picture.fillRect(15, 10, 5, 3, 4)
+    picture.fillRect(14, 14, 6, 2, 1)
+    return picture
 }
 
-function lagBaat(): Image {
-    let bilde = image.create(90, 25)
-    // Langskip, skjold og en moderne grønn ryddekasse.
-    bilde.drawLine(2, 8, 13, 21, 14)
-    bilde.fillRect(10, 9, 64, 9, 14)
-    bilde.fillRect(16, 18, 52, 5, 14)
-    bilde.fillRect(12, 10, 61, 3, 4)
-    bilde.drawLine(13, 17, 69, 17, 4)
-    bilde.drawLine(18, 22, 65, 22, 15)
-    bilde.drawLine(70, 19, 82, 6, 14)
-    bilde.fillRect(77, 1, 6, 13, 14)
-    bilde.fillRect(80, 0, 8, 5, 14)
-    bilde.setPixel(85, 1, 5)
-    bilde.fillRect(84, 5, 4, 2, 4)
+function makeBoat(): Image {
+    let picture = image.create(90, 25)
+    // Longship, shields and a modern green litter bin.
+    picture.drawLine(2, 8, 13, 21, 14)
+    picture.fillRect(10, 9, 64, 9, 14)
+    picture.fillRect(16, 18, 52, 5, 14)
+    picture.fillRect(12, 10, 61, 3, 4)
+    picture.drawLine(13, 17, 69, 17, 4)
+    picture.drawLine(18, 22, 65, 22, 15)
+    picture.drawLine(70, 19, 82, 6, 14)
+    picture.fillRect(77, 1, 6, 13, 14)
+    picture.fillRect(80, 0, 8, 5, 14)
+    picture.setPixel(85, 1, 5)
+    picture.fillRect(84, 5, 4, 2, 4)
     for (let i = 0; i < 4; i++) {
-        bilde.fillCircle(24 + i * 12, 14, 4, 2)
-        bilde.drawCircle(24 + i * 12, 14, 4, 4)
-        bilde.setPixel(24 + i * 12, 14, 13)
+        picture.fillCircle(24 + i * 12, 14, 4, 2)
+        picture.drawCircle(24 + i * 12, 14, 4, 4)
+        picture.setPixel(24 + i * 12, 14, 13)
     }
-    bilde.fillRect(11, 0, 11, 8, 7)
-    bilde.fillRect(10, 0, 13, 2, 6)
-    bilde.drawLine(14, 4, 19, 4, 1)
-    bilde.setPixel(18, 3, 1)
-    bilde.setPixel(15, 5, 1)
-    return bilde
+    picture.fillRect(11, 0, 11, 8, 7)
+    picture.fillRect(10, 0, 13, 2, 6)
+    picture.drawLine(14, 4, 19, 4, 1)
+    picture.setPixel(18, 3, 1)
+    picture.setPixel(15, 5, 1)
+    return picture
 }
 
-function lagPlast(type: number): Image {
-    let bilde = image.create(13, 13)
+function makePlastic(type: number): Image {
+    let picture = image.create(13, 13)
     if (type == 0) {
-        // Kork.
-        bilde.fillRect(2, 5, 9, 5, 2)
-        bilde.fillRect(3, 4, 7, 2, 4)
-        bilde.drawLine(3, 7, 9, 7, 1)
+        // Bottle cap.
+        picture.fillRect(2, 5, 9, 5, 2)
+        picture.fillRect(3, 4, 7, 2, 4)
+        picture.drawLine(3, 7, 9, 7, 1)
     } else if (type == 1) {
-        // Pose, med åpne håndtak.
-        bilde.fillRect(2, 4, 9, 8, 1)
-        bilde.drawRect(2, 1, 3, 5, 1)
-        bilde.drawRect(8, 1, 3, 5, 1)
-        bilde.drawLine(4, 7, 5, 10, 9)
-        bilde.drawLine(9, 6, 8, 10, 9)
+        // Bag with open handles.
+        picture.fillRect(2, 4, 9, 8, 1)
+        picture.drawRect(2, 1, 3, 5, 1)
+        picture.drawRect(8, 1, 3, 5, 1)
+        picture.drawLine(4, 7, 5, 10, 9)
+        picture.drawLine(9, 6, 8, 10, 9)
     } else if (type == 2) {
-        // Plastbit som driver under overflaten.
-        bilde.fillRect(3, 3, 7, 7, 3)
-        bilde.fillRect(1, 5, 9, 3, 3)
-        bilde.fillRect(6, 8, 5, 3, 3)
-        bilde.drawLine(4, 4, 8, 4, 1)
+        // Piece of plastic drifting below the surface.
+        picture.fillRect(3, 3, 7, 7, 3)
+        picture.fillRect(1, 5, 9, 3, 3)
+        picture.fillRect(6, 8, 5, 3, 3)
+        picture.drawLine(4, 4, 8, 4, 1)
     } else {
-        // Vannfylt PET-flaske uten kork.
-        bilde.fillRect(5, 0, 3, 3, 9)
-        bilde.fillRect(3, 3, 7, 9, 9)
-        bilde.fillRect(4, 6, 5, 3, 7)
-        bilde.drawLine(4, 4, 4, 5, 1)
-        bilde.drawLine(4, 10, 8, 10, 8)
+        // Water-filled PET bottle without a cap.
+        picture.fillRect(5, 0, 3, 3, 9)
+        picture.fillRect(3, 3, 7, 9, 9)
+        picture.fillRect(4, 6, 5, 3, 7)
+        picture.drawLine(4, 4, 4, 5, 1)
+        picture.drawLine(4, 10, 8, 10, 8)
     }
-    return bilde
+    return picture
 }
 
-function lagManet(ramme: number): Image {
-    let bilde = image.create(17, 19)
-    bilde.fillCircle(8, 7, 7, 3)
-    bilde.fillRect(1, 7, 15, 4, 3)
-    bilde.fillRect(4, 3, 8, 2, 1)
-    bilde.setPixel(5, 8, 15)
-    bilde.setPixel(11, 8, 15)
+function makeJellyfish(frame: number): Image {
+    let picture = image.create(17, 19)
+    picture.fillCircle(8, 7, 7, 3)
+    picture.fillRect(1, 7, 15, 4, 3)
+    picture.fillRect(4, 3, 8, 2, 1)
+    picture.setPixel(5, 8, 15)
+    picture.setPixel(11, 8, 15)
     for (let i = 0; i < 4; i++) {
         let x = 3 + i * 3
-        let knekk = (i + ramme) % 2 == 0 ? 2 : -1
-        bilde.drawLine(x, 11, x + knekk, 15, 3)
-        bilde.drawLine(x + knekk, 15, x, 18, 3)
+        let bend = (i + frame) % 2 == 0 ? 2 : -1
+        picture.drawLine(x, 11, x + bend, 15, 3)
+        picture.drawLine(x + bend, 15, x, 18, 3)
     }
-    return bilde
+    return picture
 }
 
-function lagBakgrunn() {
-    let bilde = image.create(160, 120)
-    bilde.fill(9)
-    bilde.fillCircle(136, 20, 7, 5)
-    // Nordnorske fjell i horisonten.
+function makeBackground() {
+    let picture = image.create(160, 120)
+    picture.fill(9)
+    picture.fillCircle(136, 20, 7, 5)
+    // Northern Norwegian mountains on the horizon.
     for (let i = 0; i < 60; i++) {
-        let hoyde = 14 - Math.abs(i - 25) / 2
-        if (hoyde > 0) bilde.drawLine(i, 43, i, 43 - hoyde, 6)
+        let height = 14 - Math.abs(i - 25) / 2
+        if (height > 0) picture.drawLine(i, 43, i, 43 - height, 6)
     }
     for (let i = 0; i < 53; i++) {
-        let hoyde = 18 - Math.abs(i - 24) * 0.7
-        if (hoyde > 0) bilde.drawLine(i + 46, 43, i + 46, 43 - hoyde, 8)
+        let height = 18 - Math.abs(i - 24) * 0.7
+        if (height > 0) picture.drawLine(i + 46, 43, i + 46, 43 - height, 8)
     }
-    bilde.fillRect(0, 44, 160, 23, 6)
-    bilde.fillRect(0, 67, 160, 25, 8)
-    bilde.fillRect(0, 92, 160, 28, 12)
-    bilde.drawLine(0, 44, 159, 44, 1)
-    bilde.fillRect(0, 114, 160, 6, 14)
-    bilde.drawLine(0, 114, 159, 114, 4)
-    scene.setBackgroundImage(bilde)
+    picture.fillRect(0, 44, 160, 23, 6)
+    picture.fillRect(0, 67, 160, 25, 8)
+    picture.fillRect(0, 92, 160, 28, 12)
+    picture.drawLine(0, 44, 159, 44, 1)
+    picture.fillRect(0, 114, 160, 6, 14)
+    picture.drawLine(0, 114, 159, 114, 4)
+    scene.setBackgroundImage(picture)
 }
 
-function si(tekst: string, varighet: number) {
-    melding = tekst
-    meldingTil = game.runtime() + varighet
+// ---- Messages and HUD ----
+
+function say(text: string, duration: number) {
+    message = text
+    messageUntil = game.runtime() + duration
 }
 
-function lagPynt(bilde: Image, z: number): Sprite {
-    let figur = sprites.create(bilde, SpriteKind.Pynt)
-    figur.setFlag(SpriteFlag.Ghost, true)
-    figur.z = z
-    return figur
+function makeDecoration(picture: Image, z: number): Sprite {
+    let sprite = sprites.create(picture, SpriteKind.Decoration)
+    sprite.setFlag(SpriteFlag.Ghost, true)
+    sprite.z = z
+    return sprite
 }
 
-function tegnHud() {
-    let bilde = hud.image
-    bilde.fill(0)
-    bilde.fillRect(0, 0, 160, 13, 15)
-    for (let i = 0; i < vikinger; i++) {
-        if (sprukket && i == vikinger - 1) {
-            bilde.drawTransparentImage(hjelmSprukket, 2 + i * 16, 1)
+function drawHud() {
+    let picture = hud.image
+    picture.fill(0)
+    picture.fillRect(0, 0, 160, 13, 15)
+    for (let i = 0; i < vikingsLeft; i++) {
+        if (cracked && i == vikingsLeft - 1) {
+            picture.drawTransparentImage(crackedHelmet, 2 + i * 16, 1)
         } else {
-            bilde.drawTransparentImage(hjelmHel, 2 + i * 16, 1)
+            picture.drawTransparentImage(intactHelmet, 2 + i * 16, 1)
         }
     }
-    bilde.print("P " + poeng, 91, 3, 1)
-    // Poengnøkler i vannet, plassert unna båten.
-    bilde.print("10", 2, 57, 9)
-    bilde.print("25", 2, 79, 9)
-    bilde.print("50", 2, 102, 9)
-    if (game.runtime() < meldingTil) {
-        let bredde = melding.length * 6 + 6
-        let x = Math.max(0, (160 - bredde) / 2)
-        bilde.fillRect(x, 14, bredde, 10, 15)
-        bilde.print(melding, x + 3, 15, 1)
+    picture.print("P " + score, 91, 3, 1)
+    // Point values in the water, placed clear of the boat.
+    picture.print("10", 2, 57, 9)
+    picture.print("25", 2, 79, 9)
+    picture.print("50", 2, 102, 9)
+    if (game.runtime() < messageUntil) {
+        let width = message.length * 6 + 6
+        let x = Math.max(0, (160 - width) / 2)
+        picture.fillRect(x, 14, width, 10, 15)
+        picture.print(message, x + 3, 15, 1)
     }
 }
 
-function oppdaterBaat() {
-    let tid = game.runtime()
-    let dupp = Math.sin(tid / 380)
-    baat.setPosition(baatX, 40 + dupp)
-    storviking.setPosition(baatX + 5, 29 + dupp)
-    for (let i = 0; i < ventende.length; i++) {
-        let vis = i < vikinger - 1
-        // Den neste vikingen løftes mot hendene under byttet.
-        let bytter = tid < bytterTil && i == vikinger - 1
-        ventende[i].setFlag(SpriteFlag.Invisible, !vis && !bytter)
-        let x = baatX - 28 + i * 9
-        let y = 30 + dupp
-        if (bytter) {
-            let andel = 1 - (bytterTil - tid) / 1100
-            x = x + (fiskerX - x) * andel
-            y = y + (MIN_DYBDE - 8 - y) * andel
+// ---- Boat and vikings ----
+
+function updateBoat() {
+    let now = game.runtime()
+    let bob = Math.sin(now / 380)
+    boat.setPosition(boatX, 40 + bob)
+    bigViking.setPosition(boatX + 5, 29 + bob)
+    for (let i = 0; i < waitingVikings.length; i++) {
+        let isWaiting = i < vikingsLeft - 1
+        // The next viking is lifted towards the hands during the swap.
+        let swapping = now < swappingUntil && i == vikingsLeft - 1
+        waitingVikings[i].setFlag(SpriteFlag.Invisible, !isWaiting && !swapping)
+        let x = boatX - 28 + i * 9
+        let y = 30 + bob
+        if (swapping) {
+            let progress = 1 - (swappingUntil - now) / 1100
+            x = x + (fisherX - x) * progress
+            y = y + (MIN_DEPTH - 8 - y) * progress
         }
-        ventende[i].setPosition(x, y)
+        waitingVikings[i].setPosition(x, y)
     }
-    let bytter = tid < bytterTil || ferdig
-    fisker.setFlag(SpriteFlag.Invisible, bytter || (tid < tryggTil && Math.idiv(tid, 110) % 2 == 0))
-    fisker.setPosition(fiskerX, dybde)
-    horn.setPosition(fisker.x, fisker.y + 9)
-    let bilde = armer.image
-    bilde.fill(0)
-    if (!ferdig) {
-        let handY = bytter ? MIN_DYBDE - 10 : fisker.y - 9
-        // To overdrevent lange armer, med grep rundt anklene.
+    let swapping = now < swappingUntil || finished
+    fisher.setFlag(SpriteFlag.Invisible, swapping || (now < safeUntil && Math.idiv(now, 110) % 2 == 0))
+    fisher.setPosition(fisherX, depth)
+    horns.setPosition(fisher.x, fisher.y + 9)
+    let picture = arms.image
+    picture.fill(0)
+    if (!finished) {
+        let handsY = swapping ? MIN_DEPTH - 10 : fisher.y - 9
+        // Two absurdly long arms, gripping the ankles.
         for (let i = 0; i < 4; i++) {
-            bilde.drawLine(baatX + 13 + i, 29 + dupp, fiskerX - 3 + i, handY, 4)
-            bilde.drawLine(baatX + 18 + i, 31 + dupp, fiskerX + 3 + i, handY, 4)
+            picture.drawLine(boatX + 13 + i, 29 + bob, fisherX - 3 + i, handsY, 4)
+            picture.drawLine(boatX + 18 + i, 31 + bob, fisherX + 3 + i, handsY, 4)
         }
-        bilde.fillRect(fiskerX - 5, handY - 2, 7, 5, 4)
-        bilde.fillRect(fiskerX + 1, handY - 2, 7, 5, 4)
+        picture.fillRect(fisherX - 5, handsY - 2, 7, 5, 4)
+        picture.fillRect(fisherX + 1, handsY - 2, 7, 5, 4)
     }
 }
 
-function plastInn() {
-    let nivaa = randint(0, 2)
-    let figur: Sprite = null
-    if (nivaa == 0) {
-        figur = sprites.create(lagPlast(randint(0, 1)), SpriteKind.Overflateplast)
-        figur.y = randint(56, 61)
-    } else if (nivaa == 1) {
-        figur = sprites.create(lagPlast(2), SpriteKind.Mellomplast)
-        figur.y = randint(77, 84)
+// ---- Spawning ----
+
+function spawnPlastic() {
+    let tier = randint(0, 2)
+    let sprite: Sprite = null
+    if (tier == 0) {
+        sprite = sprites.create(makePlastic(randint(0, 1)), SpriteKind.SurfacePlastic)
+        sprite.y = randint(56, 61)
+    } else if (tier == 1) {
+        sprite = sprites.create(makePlastic(2), SpriteKind.MidwaterPlastic)
+        sprite.y = randint(77, 84)
     } else {
-        figur = sprites.create(lagPlast(3), SpriteKind.Bunnplast)
-        figur.y = randint(101, 106)
+        sprite = sprites.create(makePlastic(3), SpriteKind.SeabedPlastic)
+        sprite.y = randint(101, 106)
     }
-    // Litt innenfor skjermkanten, ellers fjerner AutoDestroy den straks.
-    figur.x = 164
-    figur.vx = -(24 + Math.min(18, (game.runtime() - startTid) / 7000))
-    figur.z = 6
-    figur.setFlag(SpriteFlag.AutoDestroy, true)
+    // Slightly inside the screen edge, otherwise AutoDestroy removes it at once.
+    sprite.x = 164
+    sprite.vx = -(24 + Math.min(18, (game.runtime() - startTime) / 7000))
+    sprite.z = 6
+    sprite.setFlag(SpriteFlag.AutoDestroy, true)
 }
 
-function manetInn() {
-    let figur = sprites.create(manetBilder[0], SpriteKind.Manet)
-    figur.setPosition(166, randint(58, 99))
-    figur.vx = -(28 + Math.min(18, (game.runtime() - startTid) / 9000))
-    figur.z = 7
-    figur.setFlag(SpriteFlag.AutoDestroy, true)
+function spawnJellyfish() {
+    let sprite = sprites.create(jellyfishImages[0], SpriteKind.Jellyfish)
+    sprite.setPosition(166, randint(58, 99))
+    sprite.vx = -(28 + Math.min(18, (game.runtime() - startTime) / 9000))
+    sprite.z = 7
+    sprite.setFlag(SpriteFlag.AutoDestroy, true)
 }
 
-function plukk(plast: Sprite, verdi: number) {
-    if (!startet || ferdig || game.runtime() < bytterTil) return
-    poeng += verdi
-    samlet += 1
-    let tekst = image.create(23, 9)
-    tekst.print("+" + verdi, 0, 0, 5)
-    let popup = lagPynt(tekst, 50)
-    popup.setPosition(plast.x, plast.y)
+// ---- Collecting and hits ----
+
+function collect(plastic: Sprite, value: number) {
+    if (!started || finished || game.runtime() < swappingUntil) return
+    score += value
+    collected += 1
+    let text = image.create(23, 9)
+    text.print("+" + value, 0, 0, 5)
+    let popup = makeDecoration(text, 50)
+    popup.setPosition(plastic.x, plastic.y)
     popup.vy = -16
     popup.lifespan = 650
-    plast.destroy()
-    if (samlet % 8 == 0) {
-        let vitser = ["Dagens fangst: pose!", "Pant, ikke torsk!", "For en korka fangst!", "Valhall kan vente!"]
-        si(vitser[randint(0, vitser.length - 1)], 1700)
+    plastic.destroy()
+    if (collected % 8 == 0) {
+        let jokes = ["Dagens fangst: pose!", "Pant, ikke torsk!", "For en korka fangst!", "Valhall kan vente!"]
+        say(jokes[randint(0, jokes.length - 1)], 1700)
     }
 }
 
-function manetTreff(maneten: Sprite) {
-    let tid = game.runtime()
-    if (!startet || ferdig || tid < tryggTil || tid < bytterTil) return
-    tryggTil = tid + PAUSE_ETTER_TREFF
-    maneten.destroy()
+function hitJellyfish(jellyfish: Sprite) {
+    let now = game.runtime()
+    if (!started || finished || now < safeUntil || now < swappingUntil) return
+    safeUntil = now + SAFE_TIME_AFTER_HIT
+    jellyfish.destroy()
     scene.cameraShake(2, 180)
-    if (!sprukket) {
-        sprukket = true
-        fisker.setImage(fiskerSkadet)
-        si("AU! Hjelmen sprakk!", 1300)
+    if (!cracked) {
+        cracked = true
+        fisher.setImage(damagedFisher)
+        say("AU! Hjelmen sprakk!", 1300)
     } else {
-        // Ett individ tåler to treff. Storvikingen teller ikke som et liv.
-        vikinger -= 1
-        sprukket = false
-        let synker = sprites.create(fiskerSkadet.clone(), SpriteKind.Synkende)
-        synker.setPosition(fisker.x, fisker.y)
-        synker.vy = 24
-        synker.vx = -8
-        synker.z = 5
-        synker.setFlag(SpriteFlag.Ghost, true)
-        synker.lifespan = 5200
-        bytterTil = tid + 1100
-        fisker.setImage(fiskerHel)
-        dybde = MIN_DYBDE
-        if (vikinger == 0) {
-            ferdig = true
-            sluttTid = tid + 2200
-            si("Tomt for gaffelvikinger!", 2200)
+        // One viking survives two hits. The big viking does not count as a life.
+        vikingsLeft -= 1
+        cracked = false
+        let sinker = sprites.create(damagedFisher.clone(), SpriteKind.Sinking)
+        sinker.setPosition(fisher.x, fisher.y)
+        sinker.vy = 24
+        sinker.vx = -8
+        sinker.z = 5
+        sinker.setFlag(SpriteFlag.Ghost, true)
+        sinker.lifespan = 5200
+        swappingUntil = now + 1100
+        fisher.setImage(intactFisher)
+        depth = MIN_DEPTH
+        if (vikingsLeft == 0) {
+            finished = true
+            endTime = now + 2200
+            say("Tomt for gaffelvikinger!", 2200)
         } else {
-            si("Nestemann! Hold pusten!", 1500)
-            // Ny viking får tid til å komme på plass før han kan bli truffet.
-            tryggTil = bytterTil + PAUSE_ETTER_TREFF
+            say("Nestemann! Hold pusten!", 1500)
+            // The new viking gets time to settle in before he can be hit.
+            safeUntil = swappingUntil + SAFE_TIME_AFTER_HIT
         }
     }
 }
 
-function visSlutt() {
-    let bilde = tittel.image
-    bilde.fill(0)
-    bilde.fillRect(7, 27, 146, 72, 15)
-    bilde.drawRect(7, 27, 146, 72, 4)
-    bilde.print("TOMT FOR VIKINGER!", 26, 34, 5)
-    bilde.print("Havet fikk hjelp:", 29, 49, 1)
-    bilde.print(samlet + " plastbiter", 40, 61, 9)
-    bilde.print(poeng + " poeng", 49, 73, 5)
-    bilde.print("A: ny rydderunde", 34, 87, 1)
-    tittel.setFlag(SpriteFlag.Invisible, false)
+// ---- Screens ----
+
+function showGameOver() {
+    let picture = titlePanel.image
+    picture.fill(0)
+    picture.fillRect(7, 27, 146, 72, 15)
+    picture.drawRect(7, 27, 146, 72, 4)
+    picture.print("TOMT FOR VIKINGER!", 26, 34, 5)
+    picture.print("Havet fikk hjelp:", 29, 49, 1)
+    picture.print(collected + " plastbiter", 40, 61, 9)
+    picture.print(score + " poeng", 49, 73, 5)
+    picture.print("A: ny rydderunde", 34, 87, 1)
+    titlePanel.setFlag(SpriteFlag.Invisible, false)
 }
 
-function startSpill() {
-    startet = true
-    tittel.setFlag(SpriteFlag.Invisible, true)
-    startTid = game.runtime()
-    forrigeTid = startTid
-    nestePlast = startTid + 350
-    nesteManet = startTid + 3500
-    tryggTil = startTid + 1800
-    si("Fisk plast. Ikke maneter!", 2300)
+function startGame() {
+    started = true
+    titlePanel.setFlag(SpriteFlag.Invisible, true)
+    startTime = game.runtime()
+    previousTime = startTime
+    nextPlasticTime = startTime + 350
+    nextJellyfishTime = startTime + 3500
+    safeUntil = startTime + 1800
+    say("Fisk plast. Ikke maneter!", 2300)
 }
 
-hjelmHel = lagHjelm(false)
-hjelmSprukket = lagHjelm(true)
-fiskerHel = lagFisker(false)
-fiskerSkadet = lagFisker(true)
-manetBilder = [lagManet(0), lagManet(1)]
-lagBakgrunn()
-baat = lagPynt(lagBaat(), 30)
-storviking = lagPynt(lagStorviking(), 20)
-armer = lagPynt(image.create(160, 120), 24)
-armer.setPosition(80, 60)
-for (let i = 0; i < ANTALL_VIKINGER - 1; i++) {
-    ventende.push(lagPynt(lagLitenViking(i % 2 == 0 ? 8 : 7), 15))
+// ---- Setup ----
+
+intactHelmet = makeHelmet(false)
+crackedHelmet = makeHelmet(true)
+intactFisher = makeFisher(false)
+damagedFisher = makeFisher(true)
+jellyfishImages = [makeJellyfish(0), makeJellyfish(1)]
+makeBackground()
+boat = makeDecoration(makeBoat(), 30)
+bigViking = makeDecoration(makeBigViking(), 20)
+arms = makeDecoration(image.create(160, 120), 24)
+arms.setPosition(80, 60)
+for (let i = 0; i < VIKING_COUNT - 1; i++) {
+    waitingVikings.push(makeDecoration(makeSmallViking(i % 2 == 0 ? 8 : 7), 15))
 }
-fisker = sprites.create(fiskerHel, SpriteKind.Gaffel)
-fisker.z = 25
-horn = sprites.create(image.create(11, 4), SpriteKind.Horn)
-horn.image.fill(1)
-horn.setFlag(SpriteFlag.Invisible, true)
-hud = lagPynt(image.create(160, 120), 90)
+fisher = sprites.create(intactFisher, SpriteKind.Fork)
+fisher.z = 25
+horns = sprites.create(image.create(11, 4), SpriteKind.Horns)
+horns.image.fill(1)
+horns.setFlag(SpriteFlag.Invisible, true)
+hud = makeDecoration(image.create(160, 120), 90)
 hud.setPosition(80, 60)
-tittel = lagPynt(image.create(160, 120), 100)
-tittel.setPosition(80, 60)
-tittel.image.fillRect(5, 49, 150, 63, 15)
-tittel.image.drawRect(5, 49, 150, 63, 4)
-tittel.image.print("VIKINGGAFFEL", 44, 53, 5)
-tittel.image.print("Vi fisker fremtiden!", 23, 66, 1)
-tittel.image.print("Venstre/hoyre: baat", 22, 78, 9)
-tittel.image.print("Opp/ned: viking", 35, 89, 9)
-tittel.image.print("A: start", 56, 101, 5)
+titlePanel = makeDecoration(image.create(160, 120), 100)
+titlePanel.setPosition(80, 60)
+titlePanel.image.fillRect(5, 49, 150, 63, 15)
+titlePanel.image.drawRect(5, 49, 150, 63, 4)
+titlePanel.image.print("VIKINGGAFFEL", 44, 53, 5)
+titlePanel.image.print("Vi fisker fremtiden!", 23, 66, 1)
+titlePanel.image.print("Venstre/hoyre: baat", 22, 78, 9)
+titlePanel.image.print("Opp/ned: viking", 35, 89, 9)
+titlePanel.image.print("A: start", 56, 101, 5)
+
+// ---- Input and collisions ----
 
 controller.A.onEvent(ControllerButtonEvent.Pressed, function () {
-    if (!startet) startSpill()
-    else if (ferdig && game.runtime() >= sluttTid) game.reset()
+    if (!started) startGame()
+    else if (finished && game.runtime() >= endTime) game.reset()
 })
 
-sprites.onOverlap(SpriteKind.Horn, SpriteKind.Overflateplast, function (treff, plast) {
-    plukk(plast, POENG_TOPP)
+sprites.onOverlap(SpriteKind.Horns, SpriteKind.SurfacePlastic, function (hitter, plastic) {
+    collect(plastic, POINTS_SURFACE)
 })
-sprites.onOverlap(SpriteKind.Horn, SpriteKind.Mellomplast, function (treff, plast) {
-    plukk(plast, POENG_MIDT)
+sprites.onOverlap(SpriteKind.Horns, SpriteKind.MidwaterPlastic, function (hitter, plastic) {
+    collect(plastic, POINTS_MIDWATER)
 })
-sprites.onOverlap(SpriteKind.Horn, SpriteKind.Bunnplast, function (treff, plast) {
-    plukk(plast, POENG_BUNN)
+sprites.onOverlap(SpriteKind.Horns, SpriteKind.SeabedPlastic, function (hitter, plastic) {
+    collect(plastic, POINTS_SEABED)
 })
-sprites.onOverlap(SpriteKind.Gaffel, SpriteKind.Manet, function (viking, maneten) {
-    manetTreff(maneten)
+sprites.onOverlap(SpriteKind.Fork, SpriteKind.Jellyfish, function (victim, jellyfish) {
+    hitJellyfish(jellyfish)
 })
+
+// ---- Update and paint ----
 
 game.onUpdate(function () {
-    let tid = game.runtime()
-    let dt = Math.min(0.05, Math.max(0, (tid - forrigeTid) / 1000))
-    forrigeTid = tid
-    if (startet && !ferdig) {
+    let now = game.runtime()
+    let dt = Math.min(0.05, Math.max(0, (now - previousTime) / 1000))
+    previousTime = now
+    if (started && !finished) {
         if (controller.left.isPressed()) {
-            baatX -= BAATFART * dt
-            fiskerX -= BAATFART * dt
+            boatX -= BOAT_SPEED * dt
+            fisherX -= BOAT_SPEED * dt
         }
         if (controller.right.isPressed()) {
-            baatX += BAATFART * dt
-            fiskerX += BAATFART * dt
+            boatX += BOAT_SPEED * dt
+            fisherX += BOAT_SPEED * dt
         }
-        baatX = Math.constrain(baatX, 43, 110)
-        fiskerX = Math.constrain(fiskerX, 12, 148)
-        if (tid >= bytterTil) {
-            if (controller.up.isPressed()) dybde -= GAFFELFART * dt
-            if (controller.down.isPressed()) dybde += GAFFELFART * dt
-            dybde = Math.constrain(dybde, MIN_DYBDE, MAKS_DYBDE)
+        boatX = Math.constrain(boatX, 43, 110)
+        fisherX = Math.constrain(fisherX, 12, 148)
+        if (now >= swappingUntil) {
+            if (controller.up.isPressed()) depth -= FORK_SPEED * dt
+            if (controller.down.isPressed()) depth += FORK_SPEED * dt
+            depth = Math.constrain(depth, MIN_DEPTH, MAX_DEPTH)
         }
-        if (tid >= nestePlast) {
-            plastInn()
-            nestePlast = tid + randint(850, 1250)
+        if (now >= nextPlasticTime) {
+            spawnPlastic()
+            nextPlasticTime = now + randint(850, 1250)
         }
-        if (tid >= nesteManet) {
-            manetInn()
-            nesteManet = tid + Math.max(1200, 2900 - (tid - startTid) / 90)
-        }
-    }
-    for (let synker of sprites.allOfKind(SpriteKind.Synkende)) {
-        if (synker.y >= 104) {
-            synker.y = 104
-            synker.vy = 0
-            synker.vx = -10
+        if (now >= nextJellyfishTime) {
+            spawnJellyfish()
+            nextJellyfishTime = now + Math.max(1200, 2900 - (now - startTime) / 90)
         }
     }
-    for (let maneten of sprites.allOfKind(SpriteKind.Manet)) {
-        maneten.setImage(manetBilder[Math.idiv(tid, 220) % 2])
-        maneten.vy = Math.sin(tid / 450 + maneten.x / 30) * 7
-        maneten.y = Math.constrain(maneten.y, 55, 103)
+    for (let sinker of sprites.allOfKind(SpriteKind.Sinking)) {
+        if (sinker.y >= 104) {
+            sinker.y = 104
+            sinker.vy = 0
+            sinker.vx = -10
+        }
     }
-    oppdaterBaat()
-    tegnHud()
-    if (ferdig && tid >= sluttTid) visSlutt()
+    for (let jellyfish of sprites.allOfKind(SpriteKind.Jellyfish)) {
+        jellyfish.setImage(jellyfishImages[Math.idiv(now, 220) % 2])
+        jellyfish.vy = Math.sin(now / 450 + jellyfish.x / 30) * 7
+        jellyfish.y = Math.constrain(jellyfish.y, 55, 103)
+    }
+    updateBoat()
+    drawHud()
+    if (finished && now >= endTime) showGameOver()
 })
 
-// Sjøskum, bobler og bunn som hele tiden driver mot venstre.
+// Sea foam, bubbles and seabed, constantly drifting left.
 game.onPaint(function () {
-    let tid = game.runtime()
-    let skum = Math.idiv(tid, 70) % 27
+    let now = game.runtime()
+    let foam = Math.idiv(now, 70) % 27
     for (let i = 0; i < 7; i++) {
-        let x = i * 27 - skum
+        let x = i * 27 - foam
         screen.drawLine(x, 46, x + 8, 46, 9)
     }
-    let bunn = Math.idiv(tid, 95) % 35
+    let seabed = Math.idiv(now, 95) % 35
     for (let i = 0; i < 6; i++) {
-        let x = i * 35 - bunn
+        let x = i * 35 - seabed
         screen.drawLine(x, 113, x + 2, 106, 7)
         screen.drawLine(x + 2, 106, x + 5, 110, 7)
         screen.setPixel(x + 14, 117, 4)
     }
     for (let i = 0; i < 6; i++) {
-        let x = (195 + i * 29 - Math.idiv(tid, 100) % 195) % 195 - 12
-        let y = 102 - (Math.idiv(tid, 100) + i * 17) % 45
+        let x = (195 + i * 29 - Math.idiv(now, 100) % 195) % 195 - 12
+        let y = 102 - (Math.idiv(now, 100) + i * 17) % 45
         screen.drawCircle(x, y, 1, 6)
     }
 })
 
-oppdaterBaat()
-tegnHud()
+updateBoat()
+drawHud()
 
