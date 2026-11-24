@@ -283,7 +283,7 @@ interface TextLine {
 const TITLE_LINES: TextLine[] = [
     { text: "VIKINGGAFFEL", x: 44, y: 53, ink: Ink.Yellow },
     { text: "Vi fisker fremtiden!", x: 23, y: 66, ink: Ink.White },
-    { text: "Venstre/hoyre: baat", x: 22, y: 78, ink: Ink.LightBlue },
+    { text: "Venstre/høyre: båt", x: 22, y: 78, ink: Ink.LightBlue },
     { text: "Opp/ned: viking", x: 35, y: 89, ink: Ink.LightBlue },
     { text: "A: start", x: 56, y: 101, ink: Ink.Yellow }
 ]
