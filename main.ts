@@ -1,5 +1,6 @@
 // VIKINGGAFFEL for MakeCode Arcade.
-// Left/right: the boat. Up/down: the viking fork. A: start / play again.
+// Left/right: the boat. Up/down: the viking fork.
+// The title, pause, high scores and game-over screens come from the arcade-cabinet extension.
 
 // ---- Kinds and enums ----
 
@@ -15,15 +16,15 @@ namespace SpriteKind {
 }
 
 enum Phase {
-    Title,
     Playing,
-    // The last viking is gone. The panel appears at run.endTime.
-    GameOver
+    // The last viking is gone. The cabinet takes over at run.endTime.
+    GameOver,
+    // The cabinet shows its game-over screens.
+    Ended
 }
 
-// Slots in the default palette, for text, panels and arms.
+// Slots in the default palette, for text, boxes and arms.
 enum Ink {
-    Clear = 0,
     White = 1,
     Orange = 4,
     Yellow = 5,
@@ -43,8 +44,7 @@ enum Depth {
     Fisher = 25,
     Boat = 30,
     Popup = 50,
-    Hud = 90,
-    Panel = 100
+    Hud = 90
 }
 
 // ---- Tuning ----
@@ -161,7 +161,7 @@ const BUBBLE_SPACING_Y = 17
 const HELMET_X = 2
 const HELMET_SPACING = 16
 const HELMET_Y = 1
-const SCORE_X = 91
+const SCORE_RIGHT = 158
 const SCORE_Y = 3
 const LABEL_X = 2
 const CHARACTER_WIDTH = 6
@@ -237,16 +237,6 @@ function drawMessageBox(x: number, y: number, width: number) {
     screen.fillRect(x, y, width, 10, Ink.Black)
 }
 
-function drawTitlePanel(x: number, y: number) {
-    screen.fillRect(x, y, 150, 63, Ink.Black)
-    screen.drawRect(x, y, 150, 63, Ink.Orange)
-}
-
-function drawGameOverPanel(x: number, y: number) {
-    screen.fillRect(x, y, 146, 72, Ink.Black)
-    screen.drawRect(x, y, 146, 72, Ink.Orange)
-}
-
 function makeScorePopup(points: number): Image {
     let picture = image.create(23, 9)
     picture.print("+" + points, 0, 0, Ink.Yellow)
@@ -273,20 +263,7 @@ const PLASTIC_TIERS: PlasticTier[] = [
 
 const JOKES = ["Dagens fangst: pose!", "Pant, ikke torsk!", "For en korka fangst!", "Valhall kan vente!"]
 
-interface TextLine {
-    text: string
-    x: number
-    y: number
-    ink: Ink
-}
-
-const TITLE_LINES: TextLine[] = [
-    { text: "VIKINGGAFFEL", x: 44, y: 53, ink: Ink.Yellow },
-    { text: "Vi fisker fremtiden!", x: 23, y: 66, ink: Ink.White },
-    { text: "Venstre/høyre: båt", x: 22, y: 78, ink: Ink.LightBlue },
-    { text: "Opp/ned: viking", x: 35, y: 89, ink: Ink.LightBlue },
-    { text: "A: start", x: 56, y: 101, ink: Ink.Yellow }
-]
+const HOW_TO_PLAY = "Vi fisker fremtiden!\n\nVenstre/høyre: båt\nOpp/ned: viking\n\nFisk plast. Ikke maneter!"
 
 // ---- State ----
 
@@ -307,17 +284,17 @@ class Run {
     message: string
     messageUntil: number
 
-    constructor() {
-        this.phase = Phase.Title
+    constructor(now: number) {
+        this.phase = Phase.Playing
         this.score = 0
         this.collected = 0
         this.vikingsLeft = VIKING_COUNT
         this.cracked = false
-        this.previousTime = 0
-        this.startTime = 0
-        this.nextPlasticTime = 0
-        this.nextJellyfishTime = 0
-        this.safeUntil = 0
+        this.previousTime = now
+        this.startTime = now
+        this.nextPlasticTime = now + FIRST_PLASTIC_TIME
+        this.nextJellyfishTime = now + FIRST_JELLYFISH_TIME
+        this.safeUntil = now + SAFE_TIME_AT_START
         this.swappingUntil = 0
         this.endTime = 0
         this.message = ""
@@ -351,14 +328,6 @@ class World {
         this.fisher.z = Depth.Fisher
         this.horns = sprites.create(hornsImage, SpriteKind.Horns)
         this.horns.setFlag(SpriteFlag.Invisible, true)
-    }
-
-    destroy() {
-        const kinds = [SpriteKind.Decoration, SpriteKind.Fork, SpriteKind.Horns, SpriteKind.SurfacePlastic,
-            SpriteKind.MidwaterPlastic, SpriteKind.SeabedPlastic, SpriteKind.Jellyfish, SpriteKind.Sinking]
-        for (let kind of kinds) {
-            for (let sprite of sprites.allOfKind(kind)) sprite.destroy()
-        }
     }
 }
 
@@ -410,7 +379,7 @@ function placeBoatAndVikings(now: number) {
         }
         world.waitingVikings[i].setPosition(x, y)
     }
-    let hidden = isSwapping(now) || run.phase == Phase.GameOver
+    let hidden = isSwapping(now) || run.phase != Phase.Playing
     fisher.setFlag(SpriteFlag.Invisible, hidden || (now < run.safeUntil && Math.idiv(now, BLINK_TIME) % 2 == 0))
     fisher.setPosition(fisherX, world.depth)
     world.horns.setPosition(fisher.x, fisher.y + HORNS_OFFSET_Y)
@@ -499,31 +468,28 @@ function loseViking(now: number) {
 
 // ---- Run lifecycle ----
 
-// A new run and world, waiting on the title screen.
-function newGame() {
-    if (world) world.destroy()
-    run = new Run()
-    world = new World()
-    placeBoatAndVikings(game.runtime())
-}
-
+// The cabinet restarts the whole program for a new run.
 function startRun() {
     let now = game.runtime()
-    run.phase = Phase.Playing
-    run.startTime = now
-    run.previousTime = now
-    run.nextPlasticTime = now + FIRST_PLASTIC_TIME
-    run.nextJellyfishTime = now + FIRST_JELLYFISH_TIME
-    run.safeUntil = now + SAFE_TIME_AT_START
+    run = new Run(now)
+    world = new World()
     say("Fisk plast. Ikke maneter!", START_MESSAGE_TIME)
+    placeBoatAndVikings(now)
 }
 
-// ---- Input and collisions ----
+// Never returns: the cabinet takes over the screen and then restarts the program.
+function endRun() {
+    run.phase = Phase.Ended
+    // Not from inside the update handler, because it blocks.
+    control.runInParallel(function () {
+        cabinet.gameOver(run.score)
+    })
+}
 
-controller.A.onEvent(ControllerButtonEvent.Pressed, function () {
-    if (run.phase == Phase.Title) startRun()
-    else if (run.phase == Phase.GameOver && game.runtime() >= run.endTime) newGame()
-})
+// Blocks until a player presses A. The handlers below must not run before that.
+cabinet.start({ title: "VIKINGGAFFEL", howToPlay: HOW_TO_PLAY, art: backgroundImage })
+
+// ---- Collisions ----
 
 function registerPlasticOverlap(tier: PlasticTier) {
     sprites.onOverlap(SpriteKind.Horns, tier.kind, function (horns, plastic) {
@@ -538,10 +504,6 @@ sprites.onOverlap(SpriteKind.Fork, SpriteKind.Jellyfish, function (fisher, jelly
 
 // ---- Update: one function per phase ----
 
-function updateTitle(now: number) {
-    placeBoatAndVikings(now)
-}
-
 function updatePlaying(now: number, dt: number) {
     steer(now, dt)
     spawn(now)
@@ -554,6 +516,7 @@ function updateGameOver(now: number) {
     moveSinkers()
     moveJellyfish(now)
     placeBoatAndVikings(now)
+    if (run.phase == Phase.GameOver && now >= run.endTime) endRun()
 }
 
 function steer(now: number, dt: number) {
@@ -606,12 +569,11 @@ game.onUpdate(function () {
     let now = game.runtime()
     let dt = Math.min(MAX_FRAME_SECONDS, Math.max(0, (now - run.previousTime) / 1000))
     run.previousTime = now
-    if (run.phase == Phase.Title) updateTitle(now)
-    else if (run.phase == Phase.Playing) updatePlaying(now, dt)
+    if (run.phase == Phase.Playing) updatePlaying(now, dt)
     else updateGameOver(now)
 })
 
-// ---- Paint: layers and screens ----
+// ---- Paint: layers ----
 
 // x and y are the layer's screen offset, which follows the camera shake.
 interface Layer {
@@ -623,8 +585,7 @@ interface Layer {
 const LAYERS: Layer[] = [
     { z: Depth.Scenery, paint: paintScenery },
     { z: Depth.Arms, paint: paintArms },
-    { z: Depth.Hud, paint: paintHud },
-    { z: Depth.Panel, paint: paintPanel }
+    { z: Depth.Hud, paint: paintHud }
 ]
 
 function registerLayer(layer: Layer) {
@@ -654,7 +615,7 @@ function paintScenery() {
 
 // Two absurdly long arms, gripping the ankles.
 function paintArms(x: number, y: number) {
-    if (run.phase == Phase.GameOver) return
+    if (run.phase != Phase.Playing) return
     let now = game.runtime()
     let shoulderX = x + world.boatX
     let shoulderY = y + bobAt(now)
@@ -671,7 +632,8 @@ function paintHud(x: number, y: number) {
     for (let i = 0; i < run.vikingsLeft; i++) {
         drawHelmet(x + HELMET_X + i * HELMET_SPACING, y + HELMET_Y, run.cracked && i == run.vikingsLeft - 1)
     }
-    screen.print("P " + run.score, x + SCORE_X, y + SCORE_Y, Ink.White)
+    let score = "" + run.score
+    screen.print(score, x + SCORE_RIGHT - score.length * CHARACTER_WIDTH, y + SCORE_Y, Ink.White)
     for (let tier of PLASTIC_TIERS) {
         screen.print("" + tier.points, x + LABEL_X, y + tier.labelY, Ink.LightBlue)
     }
@@ -685,33 +647,8 @@ function paintMessage(x: number, y: number) {
     screen.print(run.message, left + MESSAGE_PADDING, y + MESSAGE_Y + 1, Ink.White)
 }
 
-function paintPanel(x: number, y: number) {
-    if (run.phase == Phase.Title) paintTitle(x, y)
-    else if (run.phase == Phase.GameOver && game.runtime() >= run.endTime) paintGameOver(x, y)
-}
-
-function paintTitle(x: number, y: number) {
-    drawTitlePanel(x + 5, y + 49)
-    printLines(TITLE_LINES, x, y)
-}
-
-function paintGameOver(x: number, y: number) {
-    drawGameOverPanel(x + 7, y + 27)
-    printLines([
-        { text: "TOMT FOR VIKINGER!", x: 26, y: 34, ink: Ink.Yellow },
-        { text: "Havet fikk hjelp:", x: 29, y: 49, ink: Ink.White },
-        { text: run.collected + " plastbiter", x: 40, y: 61, ink: Ink.LightBlue },
-        { text: run.score + " poeng", x: 49, y: 73, ink: Ink.Yellow },
-        { text: "A: ny rydderunde", x: 34, y: 87, ink: Ink.White }
-    ], x, y)
-}
-
-function printLines(lines: TextLine[], x: number, y: number) {
-    for (let line of lines) screen.print(line.text, x + line.x, y + line.y, line.ink)
-}
-
 // ---- Setup ----
 
 scene.setBackgroundImage(backgroundImage)
-newGame()
+startRun()
 for (let layer of LAYERS) registerLayer(layer)

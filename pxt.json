@@ -2,7 +2,8 @@
     "name": "Vikinggaffel",
     "description": "Moderne vikinger fisker plast med en viking opp ned.",
     "dependencies": {
-        "device": "*"
+        "device": "*",
+        "arcade-cabinet": "github:LeikGames/arcade-makecode-api#v0.1.0"
     },
     "files": [
         "images.g.jres",
