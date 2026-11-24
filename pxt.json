@@ -5,7 +5,10 @@
         "device": "*"
     },
     "files": [
-        "main.ts"
+        "images.g.jres",
+        "images.g.ts",
+        "main.ts",
+        "assets.json"
     ],
     "testFiles": [
         "test.ts"
